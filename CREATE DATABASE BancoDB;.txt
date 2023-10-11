@@ -1,0 +1,104 @@
+CREATE DATABASE BancoDB;
+GO
+
+-- Usar la base de datos
+USE BancoDB;
+GO
+
+-- Crear tabla de clientes
+CREATE TABLE Clientes (
+    ClienteID INT PRIMARY KEY,
+    Nombre NVARCHAR(100),
+    Apellido NVARCHAR(100),
+    Saldo FLOAT
+);
+GO
+
+-- Crear tabla de transacciones
+CREATE TABLE Transacciones (
+    TransaccionID INT PRIMARY KEY,
+    ClienteID INT,
+    TipoTransaccion NVARCHAR(50),
+    Monto FLOAT,
+    FechaTransaccion DATETIME,
+    FOREIGN KEY (ClienteID) REFERENCES Clientes(ClienteID)
+);
+GO
+----------------------------------------------------------------------------------------------------------------------------------------------------
+
+-- Modificar stored procedure para depósito
+CREATE PROCEDURE Depositar
+    @ClienteID INT,
+    @Monto FLOAT
+AS
+BEGIN
+    -- Verificar si el ClienteID existe
+    IF NOT EXISTS (SELECT 1 FROM Clientes WHERE ClienteID = @ClienteID)
+    BEGIN
+        PRINT 'ClienteID no encontrado';
+        RETURN; -- O puedes lanzar una excepción según tus necesidades
+    END
+
+    -- Generar automáticamente un nuevo TransaccionID
+    DECLARE @NuevaTransaccionID INT = (SELECT ISNULL(MAX(TransaccionID), 0) + 1 FROM Transacciones);
+
+    BEGIN TRY
+        -- Iniciar la transacción
+        BEGIN TRANSACTION;
+
+        -- Insertar la transacción
+        INSERT INTO Transacciones (TransaccionID, ClienteID, TipoTransaccion, Monto, FechaTransaccion)
+        VALUES (@NuevaTransaccionID, @ClienteID, 'Depósito', @Monto, GETDATE());
+
+        -- Confirmar la transacción
+        COMMIT;
+    END TRY
+    BEGIN CATCH
+        -- Deshacer la transacción en caso de error
+        ROLLBACK;
+        THROW;
+    END CATCH;
+END;
+----------------------------------------------------------------------------------------------------------------------------------------------------
+
+-- Crear trigger para actualizar el saldo después de cada transacción
+CREATE TRIGGER ActualizarSaldo
+ON Transacciones
+AFTER INSERT
+AS
+BEGIN
+    UPDATE C
+    SET C.Saldo = C.Saldo + I.Monto
+    FROM Clientes C
+    INNER JOIN INSERTED I ON C.ClienteID = I.ClienteID;
+END;
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+-- Insertar clientes de ejemplo
+INSERT INTO Clientes (ClienteID, Nombre, Apellido, Saldo)
+VALUES 
+    (1, 'Anthony', 'Chavez', 0.0),
+	(4, 'Roberth', 'Acuña', 0.0),
+    (2, 'Martha', 'Chavez', 0.0),
+    (3, 'Yurby', 'Quintero', 0.0);
+
+-- Verificar los clientes
+SELECT * FROM Clientes;
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+-- Realizar algunas transacciones
+EXEC Depositar @ClienteID = 1, @Monto = 100;
+EXEC Depositar @ClienteID = 2, @Monto = 200;
+
+
+-- Verificar todas las transacciones
+SELECT * FROM Transacciones;
+
+-- Eliminar transacciones
+DELETE FROM Transacciones;
+
+-- Restaurar saldos a cero
+UPDATE Clientes
+SET Saldo = 0.0;
